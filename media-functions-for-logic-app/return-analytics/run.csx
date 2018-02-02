@@ -251,7 +251,7 @@ public static async Task<object> Run(HttpRequestMessage req, TraceWriter log, Mi
                     targetContainer = GetCloudBlobContainer(_storageAccountName, _storageAccountKey, copyToContainer);
                 }
 
-                listJPGCopies = CopyFilesAsync(sourceContainer, targetContainer, prefixjpg, "jpg", log);
+                listJPGCopies = await CopyFilesAsync(sourceContainer, targetContainer, prefixjpg, "jpg", log);
                 targetContainerUri = targetContainer.Uri.ToString();
             }
 
@@ -296,14 +296,25 @@ public static async Task<object> Run(HttpRequestMessage req, TraceWriter log, Mi
             if (jsonFaceRedaction != "" && data.faceRedaction.deleteAsset != null && ((bool)data.faceRedaction.deleteAsset))
             // If asset deletion was asked
             {
+
                 // let's wait for the copy to finish before deleting the asset..
                 if (listJPGCopies.Count > 0)
                 {
                     log.Info("JPG Copy with asset deletion was asked. Checking copy status...");
-                    while (listJPGCopies.Any(r => r.CopyState.Status == CopyStatus.Pending))
+                    bool continueLoop = true;
+                    while (continueLoop)
                     {
-                        log.Info("JPG Copy not finished. Waiting 3s...");
-                        Task.Delay(TimeSpan.FromSeconds(3d)).Wait();
+                        listJPGCopies = listJPGCopies.Where(r => r.CopyState.Status == CopyStatus.Pending).ToList();
+                        if (listJPGCopies.Count == 0)
+                        {
+                            continueLoop = false;
+                        }
+                        else
+                        {
+                            log.Info("JPG Copy not finished. Waiting 3s...");
+                            Task.Delay(TimeSpan.FromSeconds(3d)).Wait();
+                            listJPGCopies.ForEach(r => r.FetchAttributes());
+                        }
                     }
                 }
                 outputAsset.Delete();
@@ -383,7 +394,7 @@ public static async Task<object> Run(HttpRequestMessage req, TraceWriter log, Mi
                     targetContainer = GetCloudBlobContainer(_storageAccountName, _storageAccountKey, copyToContainer);
                 }
 
-                listPNGCopies = CopyFilesAsync(sourceContainer, targetContainer, prefixpng, "png", log);
+                listPNGCopies = await CopyFilesAsync(sourceContainer, targetContainer, prefixpng, "png", log);
                 targetContainerUri = targetContainer.Uri.ToString();
             }
 
@@ -410,20 +421,28 @@ public static async Task<object> Run(HttpRequestMessage req, TraceWriter log, Mi
             }
 
             if (data.mesThumbnails.deleteAsset != null && ((bool)data.mesThumbnails.deleteAsset))
-            // If asset deletion was asked
             {
+                // If asset deletion was asked
                 // let's wait for the copy to finish before deleting the asset..
                 if (listPNGCopies.Count > 0)
                 {
                     log.Info("PNG Copy with asset deletion was asked. Checking copy status...");
-                    while (listPNGCopies.Any(r => r.CopyState.Status == CopyStatus.Pending))
+                    bool continueLoop = true;
+                    while (continueLoop)
                     {
-                        log.Info("PNG Copy not finished. Waiting 3s...");
-                        Task.Delay(TimeSpan.FromSeconds(3d)).Wait();
+                        listPNGCopies = listPNGCopies.Where(r => r.CopyState.Status == CopyStatus.Pending).ToList();
+                        if (listPNGCopies.Count == 0)
+                        {
+                            continueLoop = false;
+                        }
+                        else
+                        {
+                            log.Info("PNG Copy not finished. Waiting 3s...");
+                            Task.Delay(TimeSpan.FromSeconds(3d)).Wait();
+                            listPNGCopies.ForEach(r => r.FetchAttributes());
+                        }
                     }
                 }
-
-                // delete the asset
                 outputAsset.Delete();
             }
         }
@@ -599,7 +618,7 @@ public static async Task<object> Run(HttpRequestMessage req, TraceWriter log, Mi
     });
 }
 
-static public List<CloudBlob> CopyFilesAsync(CloudBlobContainer sourceBlobContainer, CloudBlobContainer destinationBlobContainer, string prefix, string extension, TraceWriter log)
+static public async Task<List<CloudBlob>> CopyFilesAsync(CloudBlobContainer sourceBlobContainer, CloudBlobContainer destinationBlobContainer, string prefix, string extension, TraceWriter log)
 {
     // init the list of tasks
     List<CloudBlob> mylistresults = new List<CloudBlob>();
@@ -641,7 +660,7 @@ static public List<CloudBlob> CopyFilesAsync(CloudBlobContainer sourceBlobContai
                 });
 
                 //mylistresults.Add(destinationBlob.StartCopyAsync(new Uri(sourceBlob.Uri.AbsoluteUri + signature)));
-                destinationBlob.StartCopyAsync(new Uri(sourceBlob.Uri.AbsoluteUri + signature));
+                await destinationBlob.StartCopyAsync(new Uri(sourceBlob.Uri.AbsoluteUri + signature));
 
                 mylistresults.Add(destinationBlob);
 
